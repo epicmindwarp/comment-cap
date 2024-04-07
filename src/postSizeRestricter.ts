@@ -12,7 +12,7 @@ enum PostRestricterSettingName {
     CommentToAdd = "postSizeCommentToAdd",
 }
 
-const LOWEST_SUPPORTED_THRESHOLD = 20;
+const LOWEST_SUPPORTED_THRESHOLD = 1;
 
 export const settingsForPostSizeRestricter: SettingsFormField = {
     type: "group",
