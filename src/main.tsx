@@ -3,6 +3,7 @@ import {checkPostRestrictionSubmitEvent, settingsForPostSizeRestricter} from "./
 
 Devvit.configure({
   redditAPI: true, // <-- this allows you to interact with Reddit's data api
+  redis: true,
 });
 
 Devvit.addSettings([
