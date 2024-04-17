@@ -94,6 +94,7 @@ export async function checkPostRestrictionSubmitEvent (event: CommentSubmit, con
         return
     }
 
+    const settings = await context.settings.getAll();
     const functionEnabled = settings[PostRestricterSettingName.EnableFeature] as boolean;
     if (!functionEnabled) {
         console.log("Function not enabled.");
@@ -115,7 +116,6 @@ export async function checkPostRestrictionSubmitEvent (event: CommentSubmit, con
         return;
     }
 
-    const settings = await context.settings.getAll();
     const postSizeThreshold = settings[PostRestricterSettingName.Threshold] as number;
     if (!postSizeThreshold) {
         // Function misconfigured, or not enough comments yet.
