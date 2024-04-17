@@ -89,31 +89,9 @@ export async function checkPostRestrictionSubmitEvent (event: CommentSubmit, con
     const comment = await context.reddit.getCommentById(event.comment.id);
     const post = await context.reddit.getPostById(event.post.id);
 
-    console.log('\nTriggered by: ' +  comment.permalink)
-
-    if (!event.post || !event.subreddit) {
-        // Post not defined (unlikely), or flair already assigned.
-        console.log("Post not defined (unlikely), or flair already assigned.");
-        return;
-    }
-
-    if (event.post.numComments < LOWEST_SUPPORTED_THRESHOLD) {
-        console.log("Post under comment threshold.");
-        return;
-    }
-
-    if (event.post.linkFlair && event.post.linkFlair.text) {
-        console.log("Flair and flair text already set");
-        return;
-    }
-
-    const settings = await context.settings.getAll();
-
-    const postSizeThreshold = settings[PostRestricterSettingName.Threshold] as number;
-    if (!postSizeThreshold || event.post.numComments < postSizeThreshold) {
-        // Function misconfigured, or not enough comments yet.
-        console.log("Function misconfigured, or not enough comments yet.");
-        return;
+    // Ignore any comments by AutoModerator, to not clog up the logs
+    if (comment.authorName === 'AutoModerator'){
+        return
     }
 
     const functionEnabled = settings[PostRestricterSettingName.EnableFeature] as boolean;
@@ -125,7 +103,35 @@ export async function checkPostRestrictionSubmitEvent (event: CommentSubmit, con
     const redisKey = `alreadyflaired~${event.post.id}`;
     const alreadyFlaired = await context.redis.get(redisKey);
     if (alreadyFlaired) {
-        console.log("Already flaired");
+        //console.log("Already flaired");
+        return;
+    }
+
+    console.log('\nTriggered by: ' +  comment.permalink)
+
+    if (!event.post || !event.subreddit) {
+        // Post not defined (unlikely), or flair already assigned.
+        console.log("Post not defined (unlikely), or flair already assigned.");
+        return;
+    }
+
+    const settings = await context.settings.getAll();
+    const postSizeThreshold = settings[PostRestricterSettingName.Threshold] as number;
+    if (!postSizeThreshold) {
+        // Function misconfigured, or not enough comments yet.
+        console.log("Function misconfigured! Check settings! postSizeThreshold: " + postSizeThreshold.toString());
+        return;
+    }
+
+    const num_comments = event.post.numComments
+    if (num_comments < postSizeThreshold) {
+        // Function misconfigured, or not enough comments yet.
+        console.log("Not enough comments (" + num_comments + ").");
+        return;
+    }
+
+    if (event.post.linkFlair && event.post.linkFlair.text) {
+        console.log("Flair and flair text already set to " + event.post.linkFlair.text.toString());
         return;
     }
 
@@ -152,6 +158,7 @@ export async function checkPostRestrictionSubmitEvent (event: CommentSubmit, con
         console.log("Post Restricter: Flair set.\n");
     }
 
+    // Setting: Add a comment after actioning
     const postSizeCommentToAdd = settings[PostRestricterSettingName.CommentToAdd] as string;
 
     if (postSizeCommentToAdd) {
@@ -175,11 +182,13 @@ export async function checkPostRestrictionSubmitEvent (event: CommentSubmit, con
         }
     }
 
+    // Setting: Lock post
     const postSizelockPost = settings[PostRestricterSettingName.LockPost] as string;   
     if (postSizelockPost) {
         await post.lock();
     };
 
+    // Setting: Send modmail
     const notifyInModMail = settings[PostRestricterSettingName.NotifyInModMail] as string;
     if (notifyInModMail) {
         
