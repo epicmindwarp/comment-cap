@@ -1,5 +1,5 @@
 import {CommentSubmit} from "@devvit/protos";
-import {SettingsFormField, TriggerContext} from "@devvit/public-api";
+import {Flair, SettingsFormField, TriggerContext} from "@devvit/public-api";
 import {replaceAll, getSubredditName} from "./utility.js";
 import {addDays, formatRelative} from "date-fns";
 
@@ -14,7 +14,10 @@ enum PostRestricterSettingName {
     LockPost = "postSizelockPost",
     NotifyInModMail = "postSizenotifyInModMail",
     ModMailSubject = "postSizemodmailBody",
-    ModMailBody = "postSizeModMailBody"
+    ModMailBody = "postSizeModMailBody",
+    OverwriteExistingFlair = "overwriteExistingFlair",
+    OverwriteFlairTextToIgnore = "overwriteFlairTextToIgnore",
+    EnhancedLogging = "enhancedLogging"
 }
 
 const LOWEST_SUPPORTED_THRESHOLD = 1;
@@ -28,7 +31,7 @@ export const settingsForPostSizeRestricter: SettingsFormField = {
             name: PostRestricterSettingName.EnableFeature,
             type: "boolean",
             label: "Enable post size restricter functionality",
-            defaultValue: false,
+            defaultValue: true,
         },
         {
             name: PostRestricterSettingName.Threshold,
@@ -50,6 +53,17 @@ export const settingsForPostSizeRestricter: SettingsFormField = {
             name: PostRestricterSettingName.FlairTemplateId,
             type: "string",
             label: "Post flair template to apply",
+        },
+        {
+            name: PostRestricterSettingName.OverwriteExistingFlair,
+            type: "boolean",
+            label: "Overwrite existing flair",
+            defaultValue: false,
+        },
+        {
+            name: PostRestricterSettingName.OverwriteFlairTextToIgnore,
+            type: "string",
+            label: "If overwrite enabled, flair text to ignore (comma seperated).",
         },
         {
             name: PostRestricterSettingName.CommentToAdd,
@@ -81,6 +95,12 @@ export const settingsForPostSizeRestricter: SettingsFormField = {
             label: "Message to include in modmail",
             defaultValue: "FYA: {submission_permalink}\n\nPosted: {submission_age}\n\n[Trigger Comment.]({comment_permalink})"
         },
+        {
+            name: PostRestricterSettingName.EnhancedLogging,
+            type: "boolean",
+            label: "Enhanced Logs",
+            defaultValue: false,
+        },
     ],
 };
 
@@ -101,10 +121,15 @@ export async function checkPostRestrictionSubmitEvent (event: CommentSubmit, con
         return;
     }
 
+    const enhancedLogging = settings[modQScannerSettingName.EnhancedLogging] as boolean;
+
     const redisKey = `alreadyflaired~${event.post.id}`;
     const alreadyFlaired = await context.redis.get(redisKey);
     if (alreadyFlaired) {
-        //console.log("Already flaired");
+
+        if (enhancedLogging) {
+            console.log("Already flaired");
+        }
         return;
     }
 
@@ -130,11 +155,6 @@ export async function checkPostRestrictionSubmitEvent (event: CommentSubmit, con
         return;
     }
 
-    if (event.post.linkFlair && event.post.linkFlair.text) {
-        console.log("Flair and flair text already set to " + event.post.linkFlair.text.toString());
-        return;
-    }
-
     let postSizeFlairText = settings[PostRestricterSettingName.FlairText] as string | undefined;
     if (postSizeFlairText === "") {
         console.log("FlairText is empty");
@@ -145,6 +165,31 @@ export async function checkPostRestrictionSubmitEvent (event: CommentSubmit, con
     if (postSizeFlairTemplateId === "") {
         postSizeFlairTemplateId = undefined;
         console.log("FlairTemplateId is undefined");
+    }
+
+    const overwriteExistingFlair = settings[PostRestricterSettingName.OverwriteExistingFlair] as boolean;
+
+    // If flair should be overwritten
+    if (overwriteExistingFlair) {
+
+        // Check if it's a flair we should ignore
+        const OverwriteFlairTextToIgnore = settings[PostRestricterSettingName.OverwriteFlairTextToIgnore] as string ?? "";
+        let overwriteFlairTextToIgnore = OverwriteFlairTextToIgnore.split(",").map(flair => flair.trim().toLowerCase());
+
+        // Add the main flair too, automatically
+        let overwriteFlairTextToIgnore.push(postSizeFlairText)
+
+        // If it's set to flair we should ignore, then do nothing
+        if (overwriteFlairTextToIgnore.includes(event.post.linkFlair.text.toLowerCase())) {
+                console.log("Flair and flair text already set to " + event.post.linkFlair.text.toString() + " (Ignore flair overwrite)");
+                return;
+            }
+    } else {
+        // If we can't overwrite any existing flair, ensure a flair isn't already set
+        if (event.post.linkFlair && event.post.linkFlair.text) {
+                console.log("Flair and flair text already set to " + event.post.linkFlair.text.toString());
+                return;
+            }
     }
 
     if (postSizeFlairText || postSizeFlairTemplateId) {
