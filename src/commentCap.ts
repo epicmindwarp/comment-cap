@@ -1,6 +1,6 @@
 import {CommentSubmit} from "@devvit/protos";
 import {SettingsFormField, TriggerContext} from "@devvit/public-api";
-import {replaceAll, getSubredditName} from "./utility.js";
+import {replaceAll, getSubredditName, ThingPrefix} from "./utility.js";
 import {addDays, formatRelative} from "date-fns";
 
 enum CcSettingName {
@@ -123,7 +123,7 @@ async function enhancedLog(context: TriggerContext, printMessage: string) {
 export async function checkCommentCapSubmitEvent(event: CommentSubmit, context: TriggerContext) {
 
     if (!event.comment || !event.post || !event.author || !event.subreddit) {
-        console.log("# ABORT - Event is not in the required state");
+        console.log("# ABORT - Event is not in the required state\n");
         return;
     }
 
@@ -134,7 +134,7 @@ export async function checkCommentCapSubmitEvent(event: CommentSubmit, context: 
     const settings = await context.settings.getAll();
     const functionEnabled = settings[CcSettingName.EnableFeature] as boolean;
     if (!functionEnabled) {
-        await enhancedLog(context, "Function not enabled.")
+        await enhancedLog(context, "Function not enabled.\n")
         return;
     }
 
@@ -143,13 +143,13 @@ export async function checkCommentCapSubmitEvent(event: CommentSubmit, context: 
         return
     }
 
-    await enhancedLog(context, `Triggered by ${comment.id}`)        
+    console.log(`Trigger: /r/${subredditName}/comments/${post.id.replace(ThingPrefix.Post, '')}/_/${comment.id.replace(ThingPrefix.Comment, '')}`)
 
     // For anything already flaired, check the redis db first
-     const redisKey = `alreadyflaired~${event.post.id}`;
-     const alreadyFlaired = await context.redis.get(redisKey);
+    const redisKey = `alreadyflaired~${event.post.id}`;
+    const alreadyFlaired = await context.redis.get(redisKey);
     if (alreadyFlaired) {
-            await enhancedLog(context, "Already flaired (checked via redis)");
+            await enhancedLog(context, "Already flaired (checked via redis)\n");
             //await context.redis.del(redisKey);
             return;
     }
@@ -157,14 +157,17 @@ export async function checkCommentCapSubmitEvent(event: CommentSubmit, context: 
     const commentCapThreshold = settings[CcSettingName.Threshold] as number;
     if (!commentCapThreshold) {
         // Function misconfigured, or not enough comments yet.
-        console.log(`ABORT: commentCapThreshold may not be defined ${commentCapThreshold}`);
+        console.log(`ABORT: commentCapThreshold may not be defined ${commentCapThreshold}\n`);
         return;
     }
 
     const numberOfCommentsInPost = event.post.numComments
     if (numberOfCommentsInPost < commentCapThreshold) {
-        console.log(`# Skipped - Not enough comments (${numberOfCommentsInPost}/${commentCapThreshold}).`);
+        console.log(`# Skipped - Not enough comments (${numberOfCommentsInPost}/${commentCapThreshold})\n`);
         return;
+    }
+    else {
+        console.log(`\nProcessing: ${post.permalink} - (${numberOfCommentsInPost}/${commentCapThreshold} comments)`)
     }
 
 
@@ -188,12 +191,6 @@ export async function checkCommentCapSubmitEvent(event: CommentSubmit, context: 
     const OverwriteFlairTextToIgnore = settings[CcSettingName.OverwriteFlairTextToIgnore] as string ?? "";
     let overwriteFlairTextToIgnore = OverwriteFlairTextToIgnore.split(",").map(flair => flair.trim().toLowerCase());
 
-    // await enhancedLog(context, "overwriteFlair checks start")
-    // await enhancedLog(context, (overwriteFlairTextToIgnore.length).toString())
-    // await enhancedLog(context, ("".includes(OverwriteFlairTextToIgnore).toString()))
-    // await enhancedLog(context, (overwriteFlairTextToIgnore.length == 1 && "".includes(OverwriteFlairTextToIgnore)).toString())
-    // await enhancedLog(context, "overwriteFlair checks end")
-
     // If the only entry in the list is not the blanks
     if (!(overwriteFlairTextToIgnore.length == 1 && "".includes(OverwriteFlairTextToIgnore))) {
 
@@ -203,7 +200,7 @@ export async function checkCommentCapSubmitEvent(event: CommentSubmit, context: 
         if (currentPostFlair) {
             // If it's set to flair we should ignore, then do nothing
             if (overwriteFlairTextToIgnore.includes(currentPostFlair.text.toLowerCase())) {
-                    console.log(`Abort - Ignore flair: "${currentPostFlair.text}" (Ignore flair overwrite)`);
+                    console.log(`Abort - Ignore flair: "${currentPostFlair.text}" (Ignore flair overwrite)\n`);
                     return;}
             }
         }
@@ -215,7 +212,7 @@ export async function checkCommentCapSubmitEvent(event: CommentSubmit, context: 
         {
             // If we can't overwrite an existing flair, ensure a flair isn't already set
             if (currentPostFlair && currentPostFlair.text) {
-                    console.log(`Skipping: Post flair already set to ${currentPostFlair.text}`);
+                    console.log(`Skipping: Post flair already set to ${currentPostFlair.text}\n`);
                     return;
                 }
             // else {
@@ -264,15 +261,16 @@ export async function checkCommentCapSubmitEvent(event: CommentSubmit, context: 
                 newComment.lock(),
             ]);
 
-            console.log("Comment added");
+            console.log("Comment added\n");
         } else {
-            console.log("Not adding comment due to existing sticky.");
+            console.log("Not adding comment due to existing sticky\n");
         }
     }
 
     // Setting: Lock post
     const ccLockPost = settings[CcSettingName.LockPost] as string;   
     if (ccLockPost) {
+        console.log('Post locked.')
         await post.lock();
     };
 
@@ -292,7 +290,11 @@ export async function checkCommentCapSubmitEvent(event: CommentSubmit, context: 
             to: `/r/${subredditName}`
         });
     
-        console.log(`modmailSent to ${subredditName} : ${modMailSubject}`)
-        await context.redis.set(redisKey, "true", {expiration: addDays(new Date(), 7)});
+        console.log(`modmailSent to ${subredditName} : ${modMailSubject}\n`)
+        
     };
+
+    await context.redis.set(redisKey, "true", {expiration: addDays(new Date(), 7)});
+    console.log('Finished.\n')
+
 }

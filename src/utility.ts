@@ -15,3 +15,12 @@ export async function getSubredditName (context: TriggerContext): Promise<string
     await context.redis.set("subredditname", subreddit.name, {expiration: addWeeks(new Date(), 1)});
     return subreddit.name;
 }
+
+export enum ThingPrefix {
+    Comment = "t1_",
+    Account = "t2_",
+    Post = "t3_",
+    Message = "t4_",
+    Subreddit = "t5_",
+    Award = "t6_"
+}
