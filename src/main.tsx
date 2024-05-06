@@ -1,5 +1,5 @@
 import { Devvit } from '@devvit/public-api';
-import {checkPostRestrictionSubmitEvent, settingsForPostSizeRestricter} from "./postSizeRestricter.js";
+import {checkCommentCapSubmitEvent, CcSettings} from "./commentCap.js";
 
 Devvit.configure({
   redditAPI: true, // <-- this allows you to interact with Reddit's data api
@@ -7,12 +7,12 @@ Devvit.configure({
 });
 
 Devvit.addSettings([
-  settingsForPostSizeRestricter
+  CcSettings
 ]);
 
 Devvit.addTrigger({
   event: "CommentSubmit",
-  onEvent: checkPostRestrictionSubmitEvent,
+  onEvent: checkCommentCapSubmitEvent,
 });
 
 export default Devvit;
