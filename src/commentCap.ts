@@ -215,16 +215,6 @@ export async function checkCommentCapSubmitEvent(event: CommentSubmit, context: 
                     console.log(`Skipping: Post flair already set to ${currentPostFlair.text}\n`);
                     return;
                 }
-            // else {
-            //     const edgeCaseError = `### ABORT - Edge case - linkFlair with no text found - ${post.permalink}`
-            //     console.log(edgeCaseError)
-            //     await context.reddit.sendPrivateMessage({
-            //         subject: "Comment Cap Edge Case!",
-            //         text: edgeCaseError,
-            //         to: "/u/epicmindwarp"
-            //     });
-            //     return;
-            //}
         }
     }
 
