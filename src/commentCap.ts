@@ -4,8 +4,8 @@ import {replaceAll, getSubredditName, ThingPrefix} from "./utility.js";
 import {addDays, formatRelative} from "date-fns";
 
 enum CcSettingName {
-    EnableFeature = "enableCommentCap",
-    Threshold = "commentCapThreshold",
+    EnableCommentCap = "enableCommentCap",
+    CcThreshold = "commentCapThreshold",
     FlairText = "ccFlairText",
     FlairTemplateId = "ccFlairTemplateId",
     CommentToAdd = "ccCommentToAdd",
@@ -29,13 +29,13 @@ export const CcSettings: SettingsFormField = {
     helpText: "Lock a post once a comment threshold is reached, with option to set a flair, leave a comment, and send modmail.",
     fields: [
         {
-            name: CcSettingName.EnableFeature,
+            name: CcSettingName.EnableCommentCap,
             type: "boolean",
             label: "Enable Comment Cap",
             defaultValue: true,
         },
         {
-            name: CcSettingName.Threshold,
+            name: CcSettingName.CcThreshold,
             type: "number",
             label: "Number of comments to trigger actions at",
             defaultValue: 150,
@@ -113,7 +113,7 @@ async function enhancedLog(context: TriggerContext, printMessage: string) {
     const settings          = await context.settings.getAll();
     const enhancedLogging   = settings[CcSettingName.EnhancedLogging] as boolean;
 
-    // If enhancedLogging is enabled, display this log
+    // If enhancedLogging is enabled, print this
     if (enhancedLogging) {
         console.log('\t# ', printMessage);
     }
@@ -132,7 +132,7 @@ export async function checkCommentCapSubmitEvent(event: CommentSubmit, context: 
     const subredditName = await getSubredditName(context);
 
     const settings = await context.settings.getAll();
-    const functionEnabled = settings[CcSettingName.EnableFeature] as boolean;
+    const functionEnabled = settings[CcSettingName.EnableCommentCap] as boolean;
     if (!functionEnabled) {
         await enhancedLog(context, "Function not enabled.\n")
         return;
@@ -150,13 +150,11 @@ export async function checkCommentCapSubmitEvent(event: CommentSubmit, context: 
     const alreadyFlaired = await context.redis.get(redisKey);
     if (alreadyFlaired) {
             await enhancedLog(context, "Already flaired (checked via redis)\n");
-            //await context.redis.del(redisKey);
             return;
     }
 
-    const commentCapThreshold = settings[CcSettingName.Threshold] as number;
+    const commentCapThreshold = settings[CcSettingName.CcThreshold] as number;
     if (!commentCapThreshold) {
-        // Function misconfigured, or not enough comments yet.
         console.log(`ABORT: commentCapThreshold may not be defined ${commentCapThreshold}\n`);
         return;
     }
