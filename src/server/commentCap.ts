@@ -52,6 +52,14 @@ function enhancedLog(enabled: boolean, message: string): void {
   if (enabled) console.log('\t# ', message);
 }
 
+// Only ever set via .env, which Devvit loads during `devvit playtest` and nowhere else -
+// never exposed as a subreddit setting, so it can't leak onto a real install.
+const redisLoggingEnabled = process.env.REDIS_DEBUG_LOGGING === 'true';
+
+function redisLog(message: string): void {
+  if (redisLoggingEnabled) console.log('\t[redis] ', message);
+}
+
 async function handleCommentSubmit(event: OnCommentSubmitRequest): Promise<void> {
   if (!event.comment || !event.post || !event.author || !event.subreddit) {
     console.log('# ABORT - Event is not in the required state\n');
@@ -82,10 +90,11 @@ async function handleCommentSubmit(event: OnCommentSubmitRequest): Promise<void>
   );
 
   // For anything already flaired, check redis first
-  const redisKey = `alreadyflaired~${event.post.id}`;
-  const alreadyFlaired = await redis.get(redisKey);
-  if (alreadyFlaired) {
-    enhancedLog(settingsValues.enhancedLogging, 'Already flaired (checked via redis)\n');
+  const redisKey = `alreadyProcessed~${event.post.id}`;
+  const alreadyProcessed = await redis.get(redisKey);
+  redisLog(`GET ${redisKey} -> ${alreadyProcessed ?? '(not set)'}`);
+  if (alreadyProcessed) {
+    enhancedLog(settingsValues.enhancedLogging, 'Already processed (redis)\n');
     return;
   }
 
@@ -208,6 +217,10 @@ async function handleCommentSubmit(event: OnCommentSubmitRequest): Promise<void>
     console.log(`modmailSent to ${subredditName} : ${modMailSubject}\n`);
   }
 
-  await redis.set(redisKey, 'true', { expiration: addDays(new Date(), ALREADY_ACTIONED_TTL_DAYS) });
-  console.log('Finished.\n');
+  // Only log if enabled
+  if (redisLoggingEnabled) {
+    await redis.set(redisKey, 'true', { expiration: addDays(new Date(), ALREADY_ACTIONED_TTL_DAYS) });
+    //redisLog(`SET ${redisKey} = true (expires in ${ALREADY_ACTIONED_TTL_DAYS}d)`);
+    console.log('Finished.\n');
+  }
 }

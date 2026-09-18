@@ -24,6 +24,11 @@
             "label": "Enable Comment Cap",
             "defaultValue": true
           },
+          "ccLockPost": {
+            "type": "boolean",
+            "label": "Lock post when triggered",
+            "defaultValue": false
+          },
           "commentCapThreshold": {
             "type": "number",
             "label": "Number of comments to trigger actions at",
@@ -56,11 +61,6 @@
             "type": "boolean",
             "label": "Overwrite existing stickied comment",
             "helpText": "If a comment is already stickied on the post, add the comment anyway instead of skipping",
-            "defaultValue": false
-          },
-          "ccLockPost": {
-            "type": "boolean",
-            "label": "Lock post when triggered",
             "defaultValue": false
           },
           "ccNotifyInModMail": {
