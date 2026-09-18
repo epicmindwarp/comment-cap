@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { context, reddit, redis, settings } from '@devvit/web/server';
+import { context, reddit, redis, settings, Subreddit } from '@devvit/web/server';
 import {
   T1,
   T3,
@@ -9,9 +9,6 @@ import {
   type TriggerResponse,
 } from '@devvit/web/shared';
 import { addDays, formatRelative } from 'date-fns';
-
-const LOWEST_SUPPORTED_THRESHOLD = 1;
-const ALREADY_ACTIONED_TTL_DAYS = 7;
 
 type CcSettingsValues = {
   enableCommentCap: boolean;
@@ -26,15 +23,60 @@ type CcSettingsValues = {
   ccNotifyInModMail: boolean;
   ccModMailSubject: string;
   ccModMailBody: string;
-  enhancedLogging: boolean;
+  ccCustomConfigurationJson?: string;
 };
 
+const LOWEST_SUPPORTED_THRESHOLD = 1;
+const REDIS_LOOKBACK_DAYS = 7;
+
+//----------------------------------------------------------
+type customConfig = {
+  enhancedLogging: boolean;
+  redisLogging: boolean;
+  redisLookbackDays: number;
+  accountsToIgnore: string;
+};
+
+function parseCustomConfig(customConfigurationJson: string | undefined): customConfig {
+  const defaults: customConfig = { enhancedLogging: false, redisLogging: true, redisLookbackDays: REDIS_LOOKBACK_DAYS, accountsToIgnore: ''};
+  if (!customConfigurationJson) return defaults;
+
+  console.log(`customConfigurationJson: ${customConfigurationJson}`)
+
+  try {
+    const parsed = JSON.parse(customConfigurationJson);
+    return {
+      enhancedLogging:
+        typeof parsed.enhancedLogging === 'boolean' ? parsed.enhancedLogging : defaults.enhancedLogging,
+      redisLogging:
+        typeof parsed.redisLogging === 'boolean' ? parsed.redisLogging : defaults.redisLogging,
+      redisLookbackDays:
+        typeof parsed.redisLookbackDays === 'number' ? parsed.redisLookbackDays : defaults.redisLookbackDays,
+      accountsToIgnore:
+        typeof parsed.accountsToIgnore === 'string' ? parsed.accountsToIgnore : '',
+    };
+  } catch {
+    return defaults;
+  }
+}
+
+function enhancedLog(enhancedLogging: boolean, message: string): void {
+  if (enhancedLogging) console.log('\t# ', message);
+}
+//----------------------------------------------------------
 export const commentCapRoutes = new Hono();
 
+// -- Get JSON configuration
 commentCapRoutes.post('/triggers/comment-submit', async (c) => {
+
   const input = await c.req.json<OnCommentSubmitRequest>();
-  await handleCommentSubmit(input);
+
+  const settingsValues = await settings.getAll<CcSettingsValues>();
+  const customConfig = parseCustomConfig(settingsValues.ccCustomConfigurationJson);
+  await handleCommentSubmit(input, settingsValues, customConfig);
+
   return c.json<TriggerResponse>({ status: 'ok' });
+
 });
 
 commentCapRoutes.post('/settings/validate-threshold', async (c) => {
@@ -48,19 +90,25 @@ commentCapRoutes.post('/settings/validate-threshold', async (c) => {
   return c.json<SettingsValidationResponse>({ success: true });
 });
 
-function enhancedLog(enabled: boolean, message: string): void {
-  if (enabled) console.log('\t# ', message);
-}
+//--------------------------------------------------------------------------------
+//################################################################################
+// All the comment handling logic happens here
+async function handleCommentSubmit(
+  event: OnCommentSubmitRequest,
+  settingsValues: CcSettingsValues,
+  customConfig: customConfig
+): Promise<void> {
+  const { enhancedLogging, redisLogging, redisLookbackDays, accountsToIgnore } = customConfig;
 
-// Only ever set via .env, which Devvit loads during `devvit playtest` and nowhere else -
-// never exposed as a subreddit setting, so it can't leak onto a real install.
-const redisLoggingEnabled = process.env.REDIS_DEBUG_LOGGING === 'true';
+  // Get output of each customConfig variable
 
-function redisLog(message: string): void {
-  if (redisLoggingEnabled) console.log('\t[redis] ', message);
-}
+  if (enhancedLogging) {
+    console.log(`enhancedLogging: ${enhancedLogging}`);
+    console.log(`redisLogging: ${redisLogging}`);
+    console.log(`redisLookbackDays: ${redisLookbackDays}`);
+    console.log(`accountsToIgnore: ${accountsToIgnore}`);
+  }
 
-async function handleCommentSubmit(event: OnCommentSubmitRequest): Promise<void> {
   if (!event.comment || !event.post || !event.author || !event.subreddit) {
     console.log('# ABORT - Event is not in the required state\n');
     return;
@@ -73,30 +121,40 @@ async function handleCommentSubmit(event: OnCommentSubmitRequest): Promise<void>
   const post = await reddit.getPostById(postId);
   const subredditName = context.subredditName;
 
-  const settingsValues = await settings.getAll<CcSettingsValues>();
+  //########################################
   if (!settingsValues.enableCommentCap) {
-    enhancedLog(settingsValues.enhancedLogging, 'Function not enabled.\n');
+    enhancedLog(enhancedLogging, 'Comment cap not enabled.\n');
     return;
   }
 
+  //-----------------------------------------------------
   // Ignore any comments by bots, to not clog up the logs
   const appUser = await reddit.getAppUser();
-  if (comment.authorName === 'AutoModerator' || comment.authorId === appUser?.id) {
-    return;
+  const customList = ['AutoModerator', appUser?.username];
+
+  if (accountsToIgnore) {
+    const accountsToIgnoreList = accountsToIgnore.split(',').map((name) => name.trim());
+    customList.push(...accountsToIgnoreList);
   }
 
+  if (customList.includes (comment.authorName)) {
+    return
+  }
+
+  //-------------------------------------------------------------------------------------------------------
   console.log(
     `Trigger: /r/${subredditName}/comments/${post.id.replace('t3_', '')}/_/${comment.id.replace('t1_', '')}`
   );
 
-  // For anything already flaired, check redis first
   const redisKey = `alreadyProcessed~${event.post.id}`;
-  const alreadyProcessed = await redis.get(redisKey);
-  redisLog(`GET ${redisKey} -> ${alreadyProcessed ?? '(not set)'}`);
-  if (alreadyProcessed) {
-    enhancedLog(settingsValues.enhancedLogging, 'Already processed (redis)\n');
-    return;
-  }
+
+  // For anything already flaired, check redis first
+  if (redisLogging) {
+    const alreadyProcessed = await redis.get(redisKey);
+    if (alreadyProcessed) {
+      console.log('Already processed (redis)\n');
+      return;
+  }}
 
   const commentCapThreshold = settingsValues.commentCapThreshold;
   if (!commentCapThreshold) {
@@ -115,14 +173,14 @@ async function handleCommentSubmit(event: OnCommentSubmitRequest): Promise<void>
   // Flair text to set the post to
   let ccFlairText = settingsValues.ccFlairText;
   if (!ccFlairText) {
-    enhancedLog(settingsValues.enhancedLogging, 'FlairText is empty');
+    enhancedLog(enhancedLogging, 'FlairText is empty');
     ccFlairText = undefined;
   }
 
   let ccFlairTemplateId = settingsValues.ccFlairTemplateId;
   if (ccFlairTemplateId === '') {
     ccFlairTemplateId = undefined;
-    enhancedLog(settingsValues.enhancedLogging, 'FlairTemplateId is undefined');
+    enhancedLog(enhancedLogging, 'FlairTemplateId is undefined');
   }
 
   const currentPostFlair = event.post.linkFlair;
@@ -135,7 +193,7 @@ async function handleCommentSubmit(event: OnCommentSubmitRequest): Promise<void>
 
   // If the only entry in the list is not the blanks
   if (!(overwriteFlairTextToIgnore.length === 1 && ''.includes(overwriteFlairTextToIgnoreRaw))) {
-    enhancedLog(settingsValues.enhancedLogging, `overwriteFlairText**ToIgnore**: "${overwriteFlairTextToIgnore}"`);
+    enhancedLog(enhancedLogging, `overwriteFlairText**ToIgnore**: "${overwriteFlairTextToIgnore}"`);
 
     // Assuming there already is a flair in place
     if (currentPostFlair) {
@@ -217,10 +275,10 @@ async function handleCommentSubmit(event: OnCommentSubmitRequest): Promise<void>
     console.log(`modmailSent to ${subredditName} : ${modMailSubject}\n`);
   }
 
-  // Only log if enabled
-  if (redisLoggingEnabled) {
-    await redis.set(redisKey, 'true', { expiration: addDays(new Date(), ALREADY_ACTIONED_TTL_DAYS) });
-    //redisLog(`SET ${redisKey} = true (expires in ${ALREADY_ACTIONED_TTL_DAYS}d)`);
+  // Only log if logging enabled
+  if (redisLogging) {
+    await redis.set(redisKey, 'true', { expiration: addDays(new Date(), (redisLookbackDays)) });
     console.log('Finished.\n');
-  }
+  };
+
 }

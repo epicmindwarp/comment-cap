@@ -78,10 +78,9 @@
             "label": "Message to include in modmail",
             "defaultValue": "FYA: {submission_permalink}\n\nPosted: {submission_age}\n\n[Trigger Comment.]({comment_permalink})"
           },
-          "enhancedLogging": {
-            "type": "boolean",
-            "label": "Enhanced Logging (for developers)",
-            "defaultValue": false
+          "ccCustomConfigurationJson": {
+            "type": "paragraph",
+            "label": "(Optional) Custom JSON configuration, as provided by developer."
           }
         }
       }
