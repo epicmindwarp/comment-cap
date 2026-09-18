@@ -4,11 +4,30 @@
   "version": "0.0.0",
   "license": "BSD-3-Clause",
   "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "build": "npm run build:server -- --minify",
+    "build:server": "esbuild --bundle --log-level=warning --sourcemap=linked --target=es2023 --format=cjs --outfile=dist/server/index.cjs --platform=node src/server/index.ts",
+    "watch": "npm run build:server -- --watch=forever",
+    "dev": "devvit playtest",
+    "clean": "rm -rf dist/",
+    "login": "devvit login",
+    "test:types": "tsc --noEmit",
+    "deploy": "npm run test:types && npm run build && devvit upload",
+    "launch": "npm run deploy && devvit publish"
+  },
   "dependencies": {
-    "@devvit/public-api": "0.10.18",
-    "date-fns": "^3.6.0"
+    "@devvit/web": "0.14.4",
+    "@hono/node-server": "2.1.1",
+    "date-fns": "^4.4.0",
+    "hono": "^4.13.8"
   },
   "devDependencies": {
-    "typescript": "5.3.2"
+    "@types/node": "^24.13.5",
+    "devvit": "0.14.4",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
   }
 }

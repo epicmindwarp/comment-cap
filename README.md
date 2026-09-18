@@ -2,6 +2,8 @@
 
 This app allows moderators to perform actions when a post reached a certain threshold limit.
 
+Once the limit is reached, the bot can lock a post, leave a comment, set a flair, and inform moderators.
+
 ## Features
 
 **Upon crossing the comment threshold (minimum of 2 comments), the following actions can be taken (in almost any combination):**

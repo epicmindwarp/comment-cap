@@ -1,0 +1,97 @@
+{
+  "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
+  "name": "comment-cap",
+  "server": {
+    "dir": "dist/server",
+    "entry": "index.cjs"
+  },
+  "permissions": {
+    "reddit": true,
+    "redis": true
+  },
+  "triggers": {
+    "onCommentSubmit": "/internal/triggers/comment-submit"
+  },
+  "settings": {
+    "subreddit": {
+      "commentCap": {
+        "type": "group",
+        "label": "Comment Cap",
+        "helpText": "Lock a post once a comment threshold is reached, with option to set a flair, leave a comment, and send modmail.",
+        "fields": {
+          "enableCommentCap": {
+            "type": "boolean",
+            "label": "Enable Comment Cap",
+            "defaultValue": true
+          },
+          "commentCapThreshold": {
+            "type": "number",
+            "label": "Number of comments to trigger actions at",
+            "defaultValue": 150,
+            "validationEndpoint": "/internal/settings/validate-threshold"
+          },
+          "ccFlairTemplateId": {
+            "type": "string",
+            "label": "Post flair template to apply"
+          },
+          "ccFlairText": {
+            "type": "string",
+            "label": "(Optional) Post flair text to apply if different to template ID text"
+          },
+          "overwriteExistingPostFlair": {
+            "type": "boolean",
+            "label": "Overwrite existing flair",
+            "defaultValue": false
+          },
+          "overwriteFlairTextToIgnore": {
+            "type": "string",
+            "label": "If overwrite enabled, flair text to ignore (comma separated)."
+          },
+          "ccCommentToAdd": {
+            "type": "paragraph",
+            "label": "Comment to sticky on post when triggered",
+            "helpText": "Leave blank to omit a comment"
+          },
+          "overwriteExistingStickyComment": {
+            "type": "boolean",
+            "label": "Overwrite existing stickied comment",
+            "helpText": "If a comment is already stickied on the post, add the comment anyway instead of skipping",
+            "defaultValue": false
+          },
+          "ccLockPost": {
+            "type": "boolean",
+            "label": "Lock post when triggered",
+            "defaultValue": false
+          },
+          "ccNotifyInModMail": {
+            "type": "boolean",
+            "label": "Send a Modmail Notification",
+            "defaultValue": false
+          },
+          "ccModMailSubject": {
+            "type": "string",
+            "label": "Message to include in modmail",
+            "defaultValue": "Post Notification - {number_of_comments} comments"
+          },
+          "ccModMailBody": {
+            "type": "paragraph",
+            "label": "Message to include in modmail",
+            "defaultValue": "FYA: {submission_permalink}\n\nPosted: {submission_age}\n\n[Trigger Comment.]({comment_permalink})"
+          },
+          "enhancedLogging": {
+            "type": "boolean",
+            "label": "Enhanced Logging (for developers)",
+            "defaultValue": false
+          }
+        }
+      }
+    }
+  },
+  "scripts": {
+    "dev": "npm run watch",
+    "build": "npm run build:server"
+  },
+  "dev": {
+    "subreddit": "comment_cap_dev"
+  }
+}
